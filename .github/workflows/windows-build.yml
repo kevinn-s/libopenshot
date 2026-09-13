@@ -1,0 +1,108 @@
+name: Windows Build (libopenshot)
+
+on:
+  workflow_dispatch:   # lets you trigger it manually from the Actions tab
+  push:
+    branches: [ master, main ]
+
+jobs:
+  build-audio:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            base-devel
+            git
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+
+      - name: Clone libopenshot-audio
+        run: git clone --depth 1 https://github.com/OpenShot/libopenshot-audio.git audio-src
+
+      - name: Build + install libopenshot-audio
+        run: |
+          mkdir -p audio-src/build
+          cd audio-src/build
+          cmake -G "MSYS Makefiles" -DCMAKE_MAKE_PROGRAM=mingw32-make -DCMAKE_INSTALL_PREFIX:PATH=/usr ../
+          make
+          make install
+
+      - name: Package installed audio lib
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact
+          Copy-Item -Recurse D:\a\_temp\msys64\usr\include\OpenShotAudio artifact\include -ErrorAction SilentlyContinue
+          Copy-Item D:\a\_temp\msys64\usr\lib\libopenshot-audio* artifact\ -ErrorAction SilentlyContinue
+
+      - name: Upload audio artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libopenshot-audio-win64
+          path: artifact
+
+  build-libopenshot:
+    needs: build-audio
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Check out libopenshot (this repo)
+        uses: actions/checkout@v4
+
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            base-devel
+            git
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ffmpeg
+            mingw-w64-x86_64-swig
+            mingw-w64-x86_64-zeromq
+            mingw-w64-x86_64-python3-pyqt5
+            mingw-w64-x86_64-python3-pip
+            mingw-w64-x86_64-python3-pyzmq
+
+      - name: Re-install libopenshot-audio into this MSYS2 env
+        run: |
+          git clone --depth 1 https://github.com/OpenShot/libopenshot-audio.git audio-src
+          mkdir -p audio-src/build
+          cd audio-src/build
+          cmake -G "MSYS Makefiles" -DCMAKE_MAKE_PROGRAM=mingw32-make -DCMAKE_INSTALL_PREFIX:PATH=/usr ../
+          make
+          make install
+
+      - name: Build libopenshot
+        run: |
+          mkdir build
+          cd build
+          cmake -G "MSYS Makefiles" -DCMAKE_MAKE_PROGRAM=mingw32-make \
+            -DCMAKE_INSTALL_PREFIX:PATH=/mingw64 \
+            -DDISABLE_TESTS=1 \
+            ../
+          make
+          make install
+
+      - name: Package build output
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item D:\a\_temp\msys64\mingw64\lib\python3*\site-packages\* dist\ -Recurse -ErrorAction SilentlyContinue
+          Copy-Item -Recurse D:\a\_temp\msys64\mingw64\include\libopenshot dist\include -ErrorAction SilentlyContinue
+
+      - name: Upload libopenshot build
+        uses: actions/upload-artifact@v4
+        with:
+          name: libopenshot-win64
+          path: dist
