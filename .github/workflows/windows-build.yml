@@ -67,7 +67,6 @@ jobs:
             git
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ffmpeg
             mingw-w64-x86_64-swig
             mingw-w64-x86_64-zeromq
             mingw-w64-x86_64-cppzmq
@@ -75,6 +74,12 @@ jobs:
             mingw-w64-x86_64-qt5-svg
             mingw-w64-x86_64-python-pip
             mingw-w64-x86_64-python-pyzmq
+
+      - name: Install FFmpeg 8 
+        shell: msys2 {0}
+        run: | 
+          curl -L -o ffmpeg.pkg.tar.zst "ARCHIVE_URL_HERE"
+          pacman -U --noconfirm   ffmpeg.pkg.tar.zst
 
       - name: Re-install libopenshot-audio into this MSYS2 env
         run: |
