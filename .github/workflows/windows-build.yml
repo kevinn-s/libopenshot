@@ -70,9 +70,9 @@ jobs:
             mingw-w64-x86_64-ffmpeg
             mingw-w64-x86_64-swig
             mingw-w64-x86_64-zeromq
-            mingw-w64-x86_64-python3-pyqt5
-            mingw-w64-x86_64-python3-pip
-            mingw-w64-x86_64-python3-pyzmq
+            mingw-w64-x86_64-pyqt5
+            mingw-w64-x86_64-python-pip
+            mingw-w64-x86_64-python-pyzmq
 
       - name: Re-install libopenshot-audio into this MSYS2 env
         run: |
