@@ -30,7 +30,7 @@ jobs:
         run: |
           mkdir -p audio-src/build
           cd audio-src/build
-          cmake -G "MSYS Makefiles" -DCMAKE_MAKE_PROGRAM=mingw32-make -DCMAKE_INSTALL_PREFIX:PATH=/usr ../
+          cmake -G "MSYS Makefiles" -DCMAKE_MAKE_PROGRAM=mingw32-make -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_CXX_FLAGS="-DJUCE_ASIO=0" ../
           make
           make install
 
@@ -79,7 +79,7 @@ jobs:
           git clone --depth 1 https://github.com/OpenShot/libopenshot-audio.git audio-src
           mkdir -p audio-src/build
           cd audio-src/build
-          cmake -G "MSYS Makefiles" -DCMAKE_MAKE_PROGRAM=mingw32-make -DCMAKE_INSTALL_PREFIX:PATH=/usr ../
+          cmake -G "MSYS Makefiles" -DCMAKE_MAKE_PROGRAM=mingw32-make -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_CXX_FLAGS="-DJUCE_ASIO=0" ../
           make
           make install
 
