@@ -396,7 +396,68 @@ jobs:
           echo ""
           echo "Found native Python module:"
           echo "$OPENSHOT_PYD"
+      
+      - name: Inspect DLL dependencies
+        run: |
+          echo "======================================"
+          echo "_openshot.pyd dependencies"
+          echo "======================================"
 
+          OPENSHOT_PYD=$(find build/bindings/python \
+            -iname "_openshot*.pyd" \
+            -print \
+            -quit)
+
+          echo "PYD:"
+          echo "$OPENSHOT_PYD"
+
+          ldd "$OPENSHOT_PYD" || true
+
+          echo ""
+          echo "======================================"
+          echo "libopenshot.dll dependencies"
+          echo "======================================"
+
+          OPENSHOT_DLL=$(find /mingw64/bin \
+            -maxdepth 1 \
+            -type f \
+            -iname "*openshot*.dll" \
+            ! -iname "*openshot-audio*.dll" \
+            -print \
+            -quit)
+
+          echo "libopenshot:"
+          echo "$OPENSHOT_DLL"
+
+          ldd "$OPENSHOT_DLL" || true
+
+          echo ""
+          echo "======================================"
+          echo "libopenshot-audio.dll dependencies"
+          echo "======================================"
+
+          AUDIO_DLL=$(find /usr/bin \
+            -maxdepth 1 \
+            -type f \
+            -iname "*openshot-audio*.dll" \
+            -print \
+            -quit)
+
+          echo "libopenshot-audio:"
+          echo "$AUDIO_DLL"
+
+          ldd "$AUDIO_DLL" || true
+
+          echo ""
+          echo "======================================"
+          echo "Missing dependencies"
+          echo "======================================"
+
+          {
+            ldd "$OPENSHOT_PYD"
+            ldd "$OPENSHOT_DLL"
+            ldd "$AUDIO_DLL"
+          } 2>/dev/null | grep -i "not found" || true
 
       # ============================================================
       # 12. ACTUALLY TEST:
@@ -412,31 +473,69 @@ jobs:
         run: |
           export PYTHONPATH="$PWD/build/bindings/python"
 
-          export PATH="/usr/bin:/mingw64/bin:$PATH"
-
           echo "PYTHONPATH:"
           echo "$PYTHONPATH"
 
           echo ""
-          echo "PATH:"
-          echo "$PATH"
+          echo "Python:"
+          python --version
 
           echo ""
           echo "Testing import..."
 
-          python -c "
+          python - <<'PY'
+          import os
           import sys
-          print('Python:', sys.version)
-          print('Executable:', sys.executable)
+          from pathlib import Path
+
+          print("Python:", sys.version)
+          print("Executable:", sys.executable)
+          print("sys.prefix:", sys.prefix)
+
+          mingw_prefix = Path(sys.prefix)
+          msys_root = mingw_prefix.parent
+
+          mingw_bin = mingw_prefix / "bin"
+          usr_bin = msys_root / "usr" / "bin"
+
+          print()
+          print("DLL directories:")
+          print("MINGW64:", mingw_bin)
+          print("USR:", usr_bin)
+
+          if not mingw_bin.is_dir():
+              raise RuntimeError(
+                  f"MINGW64 DLL directory does not exist: {mingw_bin}"
+              )
+
+          if not usr_bin.is_dir():
+              raise RuntimeError(
+                  f"MSYS2 /usr/bin directory does not exist: {usr_bin}"
+              )
+
+          # Keep handles alive while openshot is loaded.
+          dll_handles = [
+              os.add_dll_directory(str(mingw_bin)),
+              os.add_dll_directory(str(usr_bin)),
+          ]
+
+          print()
+          print("Registered DLL directories.")
+
+          print()
+          print("Importing openshot...")
 
           import openshot
 
-          print('======================================')
-          print('SUCCESS: import openshot worked')
-          print('======================================')
-          print('openshot module:', openshot.__file__)
-          "
+          print()
+          print("======================================")
+          print("SUCCESS: import openshot worked")
+          print("======================================")
+          print("openshot:", openshot.__file__)
 
+          import _openshot
+          print("_openshot:", _openshot.__file__)
+          PY
 
       # ============================================================
       # 13. CREATE THE RUNTIME ARTIFACT
