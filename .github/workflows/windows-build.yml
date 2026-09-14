@@ -1,130 +1,616 @@
-name: Windows Build (libopenshot)
+name: Windows Build (libopenshot runtime)
 
 on:
-  workflow_dispatch:   # lets you trigger it manually from the Actions tab
+  workflow_dispatch:
+
   push:
-    branches: [ master, main ]
+    branches:
+      - develop
+      - master
+      - main
 
 jobs:
-  build-audio:
+  build-windows:
     runs-on: windows-latest
+
     defaults:
       run:
         shell: msys2 {0}
+
     steps:
-      - name: Set up MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            base-devel
-            git
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-cmake
-
-      - name: Clone libopenshot-audio
-        run: git clone --depth 1 https://github.com/OpenShot/libopenshot-audio.git audio-src
-
-      - name: Build + install libopenshot-audio
-        run: |
-          mkdir -p audio-src/build
-          cd audio-src/build
-          cmake -G "MSYS Makefiles" -DCMAKE_MAKE_PROGRAM=mingw32-make -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_CXX_FLAGS="-DJUCE_ASIO=0" ../
-          make
-          make install
-
-      - name: Package installed audio lib
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path artifact
-          Copy-Item -Recurse D:\a\_temp\msys64\usr\include\OpenShotAudio artifact\include -ErrorAction SilentlyContinue
-          Copy-Item D:\a\_temp\msys64\usr\lib\libopenshot-audio* artifact\ -ErrorAction SilentlyContinue
-
-      - name: Upload audio artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: libopenshot-audio-win64
-          path: artifact
-
-  build-libopenshot:
-    needs: build-audio
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: msys2 {0}
-    steps:
-      - name: Check out libopenshot (this repo)
+      # ============================================================
+      # 1. CHECK OUT YOUR LIBOPENSHOT REPOSITORY
+      # ============================================================
+      - name: Check out libopenshot
         uses: actions/checkout@v4
 
+
+      # ============================================================
+      # 2. SET UP MSYS2 MINGW64
+      # ============================================================
       - name: Set up MSYS2
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           update: true
+
           install: >-
             base-devel
             git
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-swig
+            mingw-w64-x86_64-python
+            mingw-w64-x86_64-qt5-base
+            mingw-w64-x86_64-qt5-svg
             mingw-w64-x86_64-zeromq
             mingw-w64-x86_64-cppzmq
-            mingw-w64-x86_64-python-pyqt5
-            mingw-w64-x86_64-qt5-svg
-            mingw-w64-x86_64-python-pip
-            mingw-w64-x86_64-python-pyzmq
+            mingw-w64-x86_64-nasm
+            mingw-w64-x86_64-yasm
 
-      - name: Build + install FFmpeg 8
+
+      # ============================================================
+      # 3. SHOW TOOLCHAIN / PYTHON INFORMATION
+      #
+      # We save this information later too, because your local
+      # MSYS2 Python should match the Python ABI used here.
+      # ============================================================
+      - name: Show build environment
         run: |
-          pacman -S --noconfirm --needed mingw-w64-x86_64-nasm mingw-w64-x86_64-yasm
-          git clone --depth 1 --branch n8.0 https://github.com/FFmpeg/FFmpeg.git ffmpeg-src
+          echo "======================================"
+          echo "Python"
+          echo "======================================"
+          which python
+          python --version
+          python -c "import sys; print(sys.executable); print(sys.version)"
+
+          echo ""
+          echo "======================================"
+          echo "Compiler"
+          echo "======================================"
+          gcc --version
+          g++ --version
+
+          echo ""
+          echo "======================================"
+          echo "CMake"
+          echo "======================================"
+          cmake --version
+
+          echo ""
+          echo "======================================"
+          echo "SWIG"
+          echo "======================================"
+          swig -version
+
+
+      # ============================================================
+      # 4. BUILD FFMPEG 8
+      #
+      # Install FFmpeg 8 into:
+      #
+      #   /mingw64
+      #
+      # which corresponds to the MinGW64 environment.
+      # ============================================================
+      - name: Build and install FFmpeg 8
+        run: |
+          echo "Cloning FFmpeg 8..."
+
+          git clone \
+            --depth 1 \
+            --branch n8.0 \
+            https://github.com/FFmpeg/FFmpeg.git \
+            ffmpeg-src
+
           cd ffmpeg-src
-          ./configure --prefix=/mingw64 --target-os=mingw32 --arch=x86_64 \
-            --enable-shared --disable-static --disable-doc
+
+          echo "Configuring FFmpeg 8..."
+
+          ./configure \
+            --prefix=/mingw64 \
+            --target-os=mingw32 \
+            --arch=x86_64 \
+            --enable-shared \
+            --disable-static \
+            --disable-doc
+
+          echo "Building FFmpeg 8..."
+
           make -j$(nproc)
+
+          echo "Installing FFmpeg 8 into /mingw64..."
+
           make install
 
-      - name: Re-install libopenshot-audio into this MSYS2 env
+          echo ""
+          echo "======================================"
+          echo "Installed FFmpeg version"
+          echo "======================================"
+
+          /mingw64/bin/ffmpeg.exe -version | head -n 5
+
+
+      # ============================================================
+      # 5. BUILD LIBOPENSHOT-AUDIO
+      #
+      # IMPORTANT:
+      #
+      # libopenshot-audio is deliberately installed into:
+      #
+      #   /usr
+      #
+      # NOT /mingw64.
+      #
+      # This follows the setup we have been using successfully.
+      # ============================================================
+      - name: Build and install libopenshot-audio
         run: |
-          git clone --depth 1 https://github.com/OpenShot/libopenshot-audio.git audio-src
-          mkdir -p audio-src/build
-          cd audio-src/build
-          cmake -G "MSYS Makefiles" -DCMAKE_MAKE_PROGRAM=mingw32-make -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_CXX_FLAGS="-DJUCE_ASIO=0" ../
-          make
-          make install
+          echo "Cloning libopenshot-audio..."
 
+          git clone \
+            --depth 1 \
+            https://github.com/OpenShot/libopenshot-audio.git \
+            audio-src
+
+          echo "Configuring libopenshot-audio..."
+
+          cmake \
+            -B audio-src/build \
+            -S audio-src \
+            -G "MSYS Makefiles" \
+            -DCMAKE_MAKE_PROGRAM=mingw32-make \
+            -DCMAKE_INSTALL_PREFIX:PATH=/usr \
+            -DCMAKE_BUILD_TYPE:STRING=Release \
+            -DCMAKE_CXX_FLAGS="-DJUCE_ASIO=0"
+
+          echo "Building libopenshot-audio..."
+
+          cmake \
+            --build audio-src/build \
+            --parallel $(nproc)
+
+          echo "Installing libopenshot-audio into /usr..."
+
+          cmake \
+            --install audio-src/build
+
+          echo ""
+          echo "======================================"
+          echo "libopenshot-audio installed files"
+          echo "======================================"
+
+          find /usr \
+            \( \
+              -iname "*openshot-audio*.dll" \
+              -o \
+              -iname "*openshot-audio*.a" \
+              -o \
+              -iname "*openshot-audio*.dll.a" \
+            \) \
+            -print
+
+
+      # ============================================================
+      # 6. VERIFY LIBOPENSHOT-AUDIO BEFORE BUILDING LIBOPENSHOT
+      # ============================================================
+      - name: Verify libopenshot-audio installation
+        run: |
+          echo "Checking /usr/include..."
+
+          test -d /usr/include/OpenShotAudio
+
+          echo "Checking audio DLL..."
+
+          AUDIO_DLL=$(find /usr/bin \
+            -maxdepth 1 \
+            -iname "*openshot-audio*.dll" \
+            -print \
+            -quit)
+
+          if [ -z "$AUDIO_DLL" ]; then
+            echo "ERROR: libopenshot-audio DLL was not found."
+            exit 1
+          fi
+
+          echo "Found:"
+          echo "$AUDIO_DLL"
+
+          echo ""
+          echo "libopenshot-audio verification successful."
+
+
+      # ============================================================
+      # 7. BUILD LIBOPENSHOT
+      #
+      # libopenshot itself is installed into /mingw64.
+      #
+      # OpenShotAudio_ROOT=/usr tells CMake where the audio library
+      # from the previous step was installed.
+      #
+      # PYTHON_MODULE_PATH=python follows OpenShot's Windows CI
+      # configuration.
+      #
+      # Tests/docs/OpenCV/ImageMagick are disabled because our goal
+      # here is specifically a runtime for openshot-qt.
+      # ============================================================
+      - name: Configure libopenshot
+        run: |
+          echo "Configuring libopenshot..."
+
+          cmake \
+            -B build \
+            -S . \
+            -G "MSYS Makefiles" \
+            -DCMAKE_MAKE_PROGRAM=mingw32-make \
+            -DCMAKE_INSTALL_PREFIX:PATH=/mingw64 \
+            -DCMAKE_BUILD_TYPE:STRING=Release \
+            -DOpenShotAudio_ROOT=/usr \
+            -DPYTHON_MODULE_PATH=python \
+            -DDISABLE_TESTS=1 \
+            -DENABLE_LIB_DOCS=OFF \
+            -DENABLE_OPENCV=OFF \
+            -DENABLE_MAGICK=OFF \
+            -DUSE_QT6=OFF
+
+
+      # ============================================================
+      # 8. COMPILE LIBOPENSHOT
+      # ============================================================
       - name: Build libopenshot
         run: |
-          mkdir build
-          cd build
-          cmake -G "MSYS Makefiles" -DCMAKE_MAKE_PROGRAM=mingw32-make \
-            -DCMAKE_INSTALL_PREFIX:PATH=/mingw64 \
-            -DDISABLE_TESTS=1 \
-            ../
-          make
-          make install
+          echo "Building libopenshot..."
 
-      - name: Package build output
-        shell: pwsh
+          cmake \
+            --build build \
+            --parallel $(nproc)
+
+
+      # ============================================================
+      # 9. INSTALL LIBOPENSHOT
+      # ============================================================
+      - name: Install libopenshot
         run: |
-          New-Item -ItemType Directory -Force -Path dist
-          New-Item -ItemType Directory -Force -Path dist\bin
+          echo "Installing libopenshot into /mingw64..."
 
-          # Python bindings — grabbed directly from where SWIG/CMake actually built them
-          Copy-Item D:\a\libopenshot dist\ -ErrorAction SilentlyContinue
+          cmake \
+            --install build
 
-          # Headers, in case you need them for anything else
-          Copy-Item -Recurse D:\a\_temp\msys64\mingw64\include\libopenshot dist\include -ErrorAction SilentlyContinue
+          echo ""
+          echo "======================================"
+          echo "Installed OpenShot DLLs"
+          echo "======================================"
 
-          # DLLs — needed for _openshot.pyd to actually load (libopenshot, libopenshot-audio, ffmpeg, qt5, zeromq, etc.)
-          Copy-Item D:\a\_temp\msys64\mingw64\bin\*.dll dist\bin\ -Recurse -ErrorAction SilentlyContinue
+          find /mingw64/bin \
+            -maxdepth 1 \
+            -iname "*openshot*.dll" \
+            -print
 
-          # Keep the old site-packages copy too, in case anything else installed there is useful
-          Copy-Item D:\a\_temp\msys64\mingw64\lib\python3*\site-packages\* dist\ -Recurse -ErrorAction SilentlyContinue
 
-      - name: Upload libopenshot build
+      # ============================================================
+      # 10. INSPECT PYTHON BINDING
+      #
+      # We expect something similar to:
+      #
+      # build/bindings/python/openshot.py
+      # build/bindings/python/_openshot*.pyd
+      # ============================================================
+      - name: Inspect Python bindings
+        run: |
+          echo "======================================"
+          echo "Python binding directory"
+          echo "======================================"
+
+          find build/bindings/python \
+            -maxdepth 2 \
+            -type f \
+            -print
+
+          echo ""
+          echo "======================================"
+          echo "openshot.py"
+          echo "======================================"
+
+          find build/bindings/python \
+            -iname "openshot.py" \
+            -print
+
+          echo ""
+          echo "======================================"
+          echo "_openshot.pyd"
+          echo "======================================"
+
+          find build/bindings/python \
+            -iname "_openshot*.pyd" \
+            -print
+
+
+      # ============================================================
+      # 11. VERIFY THAT REQUIRED PYTHON FILES EXIST
+      # ============================================================
+      - name: Verify Python binding files
+        run: |
+          OPENSHOT_PY=$(find build/bindings/python \
+            -iname "openshot.py" \
+            -print \
+            -quit)
+
+          OPENSHOT_PYD=$(find build/bindings/python \
+            -iname "_openshot*.pyd" \
+            -print \
+            -quit)
+
+          if [ -z "$OPENSHOT_PY" ]; then
+            echo "ERROR: openshot.py was not generated."
+            exit 1
+          fi
+
+          if [ -z "$OPENSHOT_PYD" ]; then
+            echo "ERROR: _openshot.pyd was not generated."
+            exit 1
+          fi
+
+          echo "Found Python wrapper:"
+          echo "$OPENSHOT_PY"
+
+          echo ""
+          echo "Found native Python module:"
+          echo "$OPENSHOT_PYD"
+
+
+      # ============================================================
+      # 12. ACTUALLY TEST:
+      #
+      #     import openshot
+      #
+      # This is one of the most important checks in the entire job.
+      #
+      # A green C++ build is not enough. We want to prove that
+      # Python can actually load _openshot.pyd.
+      # ============================================================
+      - name: Test Python import
+        run: |
+          export PYTHONPATH="$PWD/build/bindings/python"
+
+          export PATH="/usr/bin:/mingw64/bin:$PATH"
+
+          echo "PYTHONPATH:"
+          echo "$PYTHONPATH"
+
+          echo ""
+          echo "PATH:"
+          echo "$PATH"
+
+          echo ""
+          echo "Testing import..."
+
+          python -c "
+          import sys
+          print('Python:', sys.version)
+          print('Executable:', sys.executable)
+
+          import openshot
+
+          print('======================================')
+          print('SUCCESS: import openshot worked')
+          print('======================================')
+          print('openshot module:', openshot.__file__)
+          "
+
+
+      # ============================================================
+      # 13. CREATE THE RUNTIME ARTIFACT
+      #
+      # Final structure:
+      #
+      # dist/
+      #   python/
+      #       openshot.py
+      #       _openshot.pyd
+      #
+      #   bin/
+      #       libopenshot.dll
+      #       libopenshot-audio.dll
+      #       FFmpeg DLLs
+      #       Qt DLLs
+      #       MinGW runtime DLLs
+      #       ZeroMQ DLLs
+      #       ...
+      #
+      #   python-version.txt
+      #   build-info.txt
+      #   msys2-packages.txt
+      # ============================================================
+      - name: Package runtime
+        run: |
+          echo "Creating artifact..."
+
+          rm -rf dist
+
+          mkdir -p dist/python
+          mkdir -p dist/bin
+
+          # --------------------------------------------------------
+          # Python binding
+          # --------------------------------------------------------
+
+          cp -a \
+            build/bindings/python/. \
+            dist/python/
+
+
+          # --------------------------------------------------------
+          # Runtime DLLs installed in /mingw64
+          #
+          # This includes:
+          #
+          # libopenshot
+          # FFmpeg
+          # Qt
+          # ZeroMQ
+          # MinGW runtime
+          # etc.
+          #
+          # We intentionally copy all DLLs for the first working
+          # runtime artifact. We can make this smaller later.
+          # --------------------------------------------------------
+
+          cp \
+            /mingw64/bin/*.dll \
+            dist/bin/
+
+
+          # --------------------------------------------------------
+          # libopenshot-audio is NOT in /mingw64.
+          #
+          # It was installed into /usr.
+          # --------------------------------------------------------
+
+          cp \
+            /usr/bin/*openshot-audio*.dll \
+            dist/bin/
+
+
+          # --------------------------------------------------------
+          # Record Python version used to compile _openshot.pyd
+          # --------------------------------------------------------
+
+          python --version > dist/python-version.txt 2>&1
+
+          python -c "
+          import sys
+          print(sys.version)
+          print(sys.executable)
+          print('implementation:', sys.implementation.name)
+          " >> dist/python-version.txt
+
+
+          # --------------------------------------------------------
+          # Record build revisions
+          # --------------------------------------------------------
+
+          {
+            echo "libopenshot:"
+            git rev-parse HEAD
+
+            echo ""
+            echo "libopenshot-audio:"
+            git -C audio-src rev-parse HEAD
+
+            echo ""
+            echo "FFmpeg:"
+            /mingw64/bin/ffmpeg.exe -version | head -n 1
+          } > dist/build-info.txt
+
+
+          # --------------------------------------------------------
+          # Record exact MSYS2 package versions
+          # --------------------------------------------------------
+
+          pacman -Q > dist/msys2-packages.txt
+
+
+          echo ""
+          echo "======================================"
+          echo "Artifact created"
+          echo "======================================"
+
+          find dist \
+            -maxdepth 3 \
+            -type f \
+            -print
+
+
+      # ============================================================
+      # 14. VERIFY ARTIFACT CONTENTS
+      #
+      # Fail the workflow rather than uploading an incomplete ZIP.
+      # ============================================================
+      - name: Verify artifact
+        run: |
+          echo "======================================"
+          echo "Checking openshot.py"
+          echo "======================================"
+
+          test -n "$(find dist/python \
+            -iname 'openshot.py' \
+            -print \
+            -quit)"
+
+
+          echo "======================================"
+          echo "Checking _openshot.pyd"
+          echo "======================================"
+
+          test -n "$(find dist/python \
+            -iname '_openshot*.pyd' \
+            -print \
+            -quit)"
+
+
+          echo "======================================"
+          echo "Checking libopenshot DLL"
+          echo "======================================"
+
+          test -n "$(find dist/bin \
+            -iname '*openshot*.dll' \
+            ! -iname '*openshot-audio*.dll' \
+            -print \
+            -quit)"
+
+
+          echo "======================================"
+          echo "Checking libopenshot-audio DLL"
+          echo "======================================"
+
+          test -n "$(find dist/bin \
+            -iname '*openshot-audio*.dll' \
+            -print \
+            -quit)"
+
+
+          echo "======================================"
+          echo "Checking FFmpeg avcodec"
+          echo "======================================"
+
+          test -n "$(find dist/bin \
+            -iname 'avcodec*.dll' \
+            -print \
+            -quit)"
+
+
+          echo "======================================"
+          echo "Checking FFmpeg avformat"
+          echo "======================================"
+
+          test -n "$(find dist/bin \
+            -iname 'avformat*.dll' \
+            -print \
+            -quit)"
+
+
+          echo "======================================"
+          echo "Checking FFmpeg avutil"
+          echo "======================================"
+
+          test -n "$(find dist/bin \
+            -iname 'avutil*.dll' \
+            -print \
+            -quit)"
+
+
+          echo ""
+          echo "======================================"
+          echo "ALL ARTIFACT CHECKS PASSED"
+          echo "======================================"
+
+
+      # ============================================================
+      # 15. UPLOAD FINAL ARTIFACT
+      # ============================================================
+      - name: Upload libopenshot Windows runtime
         uses: actions/upload-artifact@v4
         with:
-          name: libopenshot-win64
+          name: libopenshot-runtime-win64
           path: dist
+          if-no-files-found: error
