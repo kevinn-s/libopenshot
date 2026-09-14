@@ -104,29 +104,24 @@ jobs:
             ../
           make
           make install
-          
-      - name: Inspect installed Python packages (debug)
-        run: |
-          echo "--- Detected Python site-packages folder(s) ---"
-          find /mingw64/lib -maxdepth 1 -type d -iname "python3*"
-          echo "--- Contents of site-packages ---"
-          find /mingw64/lib/python3*/site-packages -maxdepth 1
-          echo "--- make install verbose re-run (to see what it actually installs) ---"
-          cd build
-          make install VERBOSE=1 2>&1 | grep -i -E "openshot\.py|_openshot|install"
-      
-      - name: Upload full build folder (debug)
-        uses: actions/upload-artifact@v4
-        with:
-          name: full-build-debug
-          path: D:\a\libopenshot
 
       - name: Package build output
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist
-          Copy-Item D:\a\_temp\msys64\mingw64\lib\python3*\site-packages\* dist\ -Recurse -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path dist\bin
+
+          # Python bindings — grabbed directly from where SWIG/CMake actually built them
+          Copy-Item D:\a\libopenshot dist\ -ErrorAction SilentlyContinue
+
+          # Headers, in case you need them for anything else
           Copy-Item -Recurse D:\a\_temp\msys64\mingw64\include\libopenshot dist\include -ErrorAction SilentlyContinue
+
+          # DLLs — needed for _openshot.pyd to actually load (libopenshot, libopenshot-audio, ffmpeg, qt5, zeromq, etc.)
+          Copy-Item D:\a\_temp\msys64\mingw64\bin\*.dll dist\bin\ -Recurse -ErrorAction SilentlyContinue
+
+          # Keep the old site-packages copy too, in case anything else installed there is useful
+          Copy-Item D:\a\_temp\msys64\mingw64\lib\python3*\site-packages\* dist\ -Recurse -ErrorAction SilentlyContinue
 
       - name: Upload libopenshot build
         uses: actions/upload-artifact@v4
