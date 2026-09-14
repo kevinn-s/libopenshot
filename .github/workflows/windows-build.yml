@@ -104,6 +104,16 @@ jobs:
             ../
           make
           make install
+          
+      - name: Inspect installed Python packages (debug)
+        run: |
+          echo "--- Detected Python site-packages folder(s) ---"
+          find /mingw64/lib -maxdepth 1 -type d -iname "python3*"
+          echo "--- Contents of site-packages ---"
+          find /mingw64/lib/python3*/site-packages -maxdepth 1
+          echo "--- make install verbose re-run (to see what it actually installs) ---"
+          cd build
+          make install VERBOSE=1 2>&1 | grep -i -E "openshot\.py|_openshot|install"
       
       - name: Upload full build folder (debug)
         uses: actions/upload-artifact@v4
