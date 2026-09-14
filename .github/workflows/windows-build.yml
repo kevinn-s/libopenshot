@@ -104,6 +104,12 @@ jobs:
             ../
           make
           make install
+      
+      - name: Upload full build folder (debug)
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-build-debug
+          path: D:\a\libopenshot
 
       - name: Package build output
         shell: pwsh
