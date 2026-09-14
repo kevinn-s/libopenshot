@@ -75,12 +75,15 @@ jobs:
             mingw-w64-x86_64-python-pip
             mingw-w64-x86_64-python-pyzmq
 
-      - name: Install FFmpeg 8 
-        shell: msys2 {0}
-        run: | 
-          curl -L -o ffmpeg.pkg.tar.zst \      
-          https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-ffmpeg-8.0-5-any.pkg.tar.zst
-          pacman -U --noconfirm ffmpeg.pkg.tar.zst
+      - name: Build + install FFmpeg 8
+        run: |
+          pacman -S --noconfirm --needed mingw-w64-x86_64-nasm mingw-w64-x86_64-yasm
+          git clone --depth 1 --branch n8.0 https://github.com/FFmpeg/FFmpeg.git ffmpeg-src
+          cd ffmpeg-src
+          ./configure --prefix=/mingw64 --target-os=mingw32 --arch=x86_64 \
+            --enable-shared --disable-static --disable-doc
+          make -j$(nproc)
+          make install
 
       - name: Re-install libopenshot-audio into this MSYS2 env
         run: |
