@@ -196,28 +196,68 @@ jobs:
       # ============================================================
       - name: Verify libopenshot-audio installation
         run: |
-          echo "Checking /usr/include..."
-
-          test -d /usr/include/OpenShotAudio
-
-          echo "Checking audio DLL..."
-
+          echo "======================================"
+          echo "Checking libopenshot-audio headers"
+          echo "======================================"
+      
+          if [ ! -d /usr/include/libopenshot-audio ]; then
+            echo "ERROR: /usr/include/libopenshot-audio does not exist."
+            echo ""
+            echo "Contents of /usr/include:"
+            find /usr/include -maxdepth 2 -type f | head -n 100
+            exit 1
+          fi
+      
+          if [ ! -f /usr/include/libopenshot-audio/OpenShotAudio.h ]; then
+            echo "ERROR: OpenShotAudio.h was not found."
+            echo ""
+            echo "Contents of /usr/include/libopenshot-audio:"
+            find /usr/include/libopenshot-audio -maxdepth 2 -type f -print
+            exit 1
+          fi
+      
+          echo "Found header:"
+          echo "/usr/include/libopenshot-audio/OpenShotAudio.h"
+      
+          echo ""
+          echo "======================================"
+          echo "Checking libopenshot-audio DLL"
+          echo "======================================"
+      
           AUDIO_DLL=$(find /usr/bin \
             -maxdepth 1 \
+            -type f \
             -iname "*openshot-audio*.dll" \
             -print \
             -quit)
-
+      
           if [ -z "$AUDIO_DLL" ]; then
             echo "ERROR: libopenshot-audio DLL was not found."
+            echo ""
+            echo "Contents of /usr/bin:"
+            find /usr/bin -maxdepth 1 -type f -print | sort
             exit 1
           fi
-
-          echo "Found:"
+      
+          echo "Found audio DLL:"
           echo "$AUDIO_DLL"
-
+      
           echo ""
-          echo "libopenshot-audio verification successful."
+          echo "======================================"
+          echo "Checking CMake package files"
+          echo "======================================"
+      
+          find /usr/lib/cmake \
+            -maxdepth 3 \
+            -iname "*OpenShotAudio*" \
+            -print \
+            2>/dev/null || true
+      
+          echo ""
+          echo "======================================"
+          echo "libopenshot-audio verification successful"
+          echo "======================================"
+          
 
 
       # ============================================================
