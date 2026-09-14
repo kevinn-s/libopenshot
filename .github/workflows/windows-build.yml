@@ -78,8 +78,9 @@ jobs:
       - name: Install FFmpeg 8 
         shell: msys2 {0}
         run: | 
-          curl -L -o ffmpeg.pkg.tar.zst \      https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-ffmpeg-8.0-5-any.pkg.tar.zst
-    pacman -U --noconfirm ffmpeg.pkg.tar.zst
+          curl -L -o ffmpeg.pkg.tar.zst \      
+          https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-ffmpeg-8.0-5-any.pkg.tar.zst
+          pacman -U --noconfirm ffmpeg.pkg.tar.zst
 
       - name: Re-install libopenshot-audio into this MSYS2 env
         run: |
